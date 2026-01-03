@@ -464,22 +464,11 @@ func NewServerFromRedisClient(c redis.UniversalClient, cfg Config) *Server {
 	if isFailureFunc == nil {
 		isFailureFunc = defaultIsFailureFunc
 	}
-	queues := make(map[string]int)
-	for qname, p := range cfg.Queues {
-		if err := base.ValidateQueueName(qname); err != nil {
-			continue // ignore invalid queue names
-		}
-		if p > 0 {
-			queues[qname] = p
-		}
-	}
+	queues := getQueues(cfg.Queues)
 	if len(queues) == 0 {
 		queues = defaultQueueConfig
 	}
-	var qnames []string
-	for q := range queues {
-		qnames = append(qnames, q)
-	}
+	qNames := extractQueueNames(queues)
 	shutdownTimeout := cfg.ShutdownTimeout
 	if shutdownTimeout == 0 {
 		shutdownTimeout = defaultShutdownTimeout
@@ -533,7 +522,7 @@ func NewServerFromRedisClient(c redis.UniversalClient, cfg Config) *Server {
 	forwarder := newForwarder(forwarderParams{
 		logger:   logger,
 		broker:   rdb,
-		queues:   qnames,
+		queues:   qNames,
 		interval: delayedTaskCheckInterval,
 	})
 	subscriber := newSubscriber(subscriberParams{
@@ -563,7 +552,7 @@ func NewServerFromRedisClient(c redis.UniversalClient, cfg Config) *Server {
 		broker:         rdb,
 		retryDelayFunc: delayFunc,
 		isFailureFunc:  isFailureFunc,
-		queues:         qnames,
+		queues:         qNames,
 		interval:       1 * time.Minute,
 	})
 	healthchecker := newHealthChecker(healthcheckerParams{
@@ -589,14 +578,14 @@ func NewServerFromRedisClient(c redis.UniversalClient, cfg Config) *Server {
 	janitor := newJanitor(janitorParams{
 		logger:    logger,
 		broker:    rdb,
-		queues:    qnames,
+		queues:    qNames,
 		interval:  janitorInterval,
 		batchSize: janitorBatchSize,
 	})
 	aggregator := newAggregator(aggregatorParams{
 		logger:          logger,
 		broker:          rdb,
-		queues:          qnames,
+		queues:          qNames,
 		gracePeriod:     groupGracePeriod,
 		maxDelay:        cfg.GroupMaxDelay,
 		maxSize:         cfg.GroupMaxSize,
@@ -667,6 +656,39 @@ func (srv *Server) Run(handler Handler) error {
 	srv.waitForSignals()
 	srv.Shutdown()
 	return nil
+}
+
+func (srv *Server) SetQueues(queues map[string]int, strictPriority bool) {
+	queues = getQueues(queues)
+	qNames := extractQueueNames(queues)
+
+	srv.heartbeater.SetQueues(queues)
+	srv.processor.SetQueues(queues, strictPriority)
+
+	srv.recoverer.SetQueues(qNames)
+	srv.aggregator.SetQueues(qNames)
+	srv.forwarder.SetQueues(qNames)
+}
+
+func getQueues(queuesConfig map[string]int) map[string]int {
+	queues := make(map[string]int)
+	for qname, p := range queuesConfig {
+		if err := base.ValidateQueueName(qname); err != nil {
+			continue // ignore invalid queue names
+		}
+		if p > 0 {
+			queues[qname] = p
+		}
+	}
+	return queues
+}
+
+func extractQueueNames(queues map[string]int) []string {
+	var qNames []string
+	for q := range queues {
+		qNames = append(qNames, q)
+	}
+	return qNames
 }
 
 // Start starts the worker server. Once the server has started,
