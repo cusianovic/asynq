@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hibiken/asynq/internal/base"
-	"github.com/hibiken/asynq/internal/log"
-	"github.com/hibiken/asynq/internal/rdb"
+	"github.com/cusianovic/asynq/internal/base"
+	"github.com/cusianovic/asynq/internal/log"
+	"github.com/cusianovic/asynq/internal/rdb"
 	"github.com/redis/go-redis/v9"
 )
 
